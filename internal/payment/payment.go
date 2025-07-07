@@ -53,6 +53,42 @@ func NewPaymentService(
 	}
 }
 
+// syncCustomerFromPanel синхронизирует данные пользователя с панелью перед обработкой платежа
+func (s PaymentService) syncCustomerFromPanel(ctx context.Context, customer *database.Customer) error {
+	slog.Info("Syncing customer data from panel before payment processing", "telegramId", utils.MaskHalfInt64(customer.TelegramID))
+	
+	// Получаем актуальные данные пользователя из панели
+	panelUser, err := s.remnawaveClient.GetUserByTelegramId(ctx, customer.TelegramID)
+	if err != nil {
+		slog.Error("Error getting user from panel", "telegramId", utils.MaskHalfInt64(customer.TelegramID), "error", err)
+		return err
+	}
+	
+	// Если пользователь найден в панели, обновляем данные в боте
+	if panelUser != nil {
+		customerFilesToUpdate := map[string]interface{}{
+			"expire_at": panelUser.ExpireAt,
+			"subscription_link": panelUser.SubscriptionUrl,
+		}
+		
+		err = s.customerRepository.UpdateFields(ctx, customer.ID, customerFilesToUpdate)
+		if err != nil {
+			slog.Error("Error updating customer data from panel", "customerId", utils.MaskHalfInt64(customer.ID), "error", err)
+			return err
+		}
+		
+		// Обновляем локальные данные customer для дальнейшего использования
+		customer.ExpireAt = &panelUser.ExpireAt
+		customer.SubscriptionLink = &panelUser.SubscriptionUrl
+		
+		slog.Info("Customer data synced from panel", "telegramId", utils.MaskHalfInt64(customer.TelegramID), "newExpireAt", panelUser.ExpireAt)
+	} else {
+		slog.Info("User not found in panel, will be created during payment processing", "telegramId", utils.MaskHalfInt64(customer.TelegramID))
+	}
+	
+	return nil
+}
+
 func (s PaymentService) ProcessPurchaseById(ctx context.Context, purchaseId int64) error {
 	purchase, err := s.purchaseRepository.FindById(ctx, purchaseId)
 	if err != nil {
@@ -68,6 +104,13 @@ func (s PaymentService) ProcessPurchaseById(ctx context.Context, purchaseId int6
 	}
 	if customer == nil {
 		return fmt.Errorf("customer %s not found", utils.MaskHalfInt64(purchase.CustomerID))
+	}
+
+	// Синхронизируем данные пользователя с панелью перед обработкой платежа
+	err = s.syncCustomerFromPanel(ctx, customer)
+	if err != nil {
+		slog.Error("Failed to sync customer from panel, continuing with existing data", "customerId", utils.MaskHalfInt64(customer.ID), "error", err)
+		// Продолжаем обработку платежа даже если синхронизация не удалась
 	}
 
 	if messageId, b := s.cache.Get(purchase.ID); b {

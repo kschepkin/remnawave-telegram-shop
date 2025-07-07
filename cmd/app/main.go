@@ -77,6 +77,11 @@ func main() {
 
 	syncService := sync.NewSyncService(remnawaveClient, customerRepository)
 
+	// Добавляем автоматическую синхронизацию каждые 30 минут
+	autoSyncCronScheduler := setupAutoSync(syncService)
+	autoSyncCronScheduler.Start()
+	defer autoSyncCronScheduler.Stop()
+
 	h := handler.NewHandler(syncService, paymentService, tm, customerRepository, purchaseRepository, cryptoPayClient, yookasaClient, referralRepository, cache)
 
 	me, err := b.GetMe(ctx)
@@ -141,6 +146,22 @@ func isAdminMiddleware(next bot.HandlerFunc) bot.HandlerFunc {
 			return
 		}
 	}
+}
+
+// setupAutoSync настраивает автоматическую синхронизацию каждые 30 минут
+func setupAutoSync(syncService *sync.SyncService) *cron.Cron {
+	c := cron.New()
+
+	_, err := c.AddFunc("*/30 * * * *", func() {
+		slog.Info("Running automatic sync with panel")
+		syncService.Sync()
+		slog.Info("Automatic sync completed")
+	})
+
+	if err != nil {
+		panic(err)
+	}
+	return c
 }
 
 func setupSubscriptionNotifier(subService *notification.SubscriptionService) *cron.Cron {

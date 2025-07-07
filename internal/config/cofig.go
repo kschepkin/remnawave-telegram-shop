@@ -261,7 +261,7 @@ func InitConfig() {
 	conf.remnawaveMode = func() string {
 		v := os.Getenv("REMNAWAVE_MODE")
 		if v != "" {
-			if conf.remnawaveMode != "remote" && conf.remnawaveMode != "local" {
+			if v != "remote" && v != "local" {
 				panic("REMNAWAVE_MODE .env variable must be either 'remote' or 'local'")
 			} else {
 				return v

@@ -71,6 +71,33 @@ func (r *Client) GetUsers(ctx context.Context) (*[]remapi.UserDto, error) {
 	return &users, nil
 }
 
+// GetUserByTelegramId получает пользователя из панели по Telegram ID
+func (r *Client) GetUserByTelegramId(ctx context.Context, telegramId int64) (*remapi.UserDto, error) {
+	resp, err := r.client.UsersControllerGetUserByTelegramId(ctx, remapi.UsersControllerGetUserByTelegramIdParams{TelegramId: strconv.FormatInt(telegramId, 10)})
+	if err != nil {
+		return nil, err
+	}
+
+	switch v := resp.(type) {
+	case *remapi.UsersControllerGetUserByTelegramIdNotFound:
+		return nil, nil // Пользователь не найден
+	case *remapi.UsersDto:
+		var existingUser *remapi.UserDto
+		for _, panelUser := range v.GetResponse() {
+			if strings.Contains(panelUser.Username, fmt.Sprintf("_%d", telegramId)) {
+				existingUser = &panelUser
+				break
+			}
+		}
+		if existingUser == nil && len(v.GetResponse()) > 0 {
+			existingUser = &v.GetResponse()[0]
+		}
+		return existingUser, nil
+	default:
+		return nil, errors.New("unknown response type")
+	}
+}
+
 func (r *Client) CreateOrUpdateUser(ctx context.Context, customerId int64, telegramId int64, trafficLimit int, days int) (*remapi.UserDto, error) {
 	resp, err := r.client.UsersControllerGetUserByTelegramId(ctx, remapi.UsersControllerGetUserByTelegramIdParams{TelegramId: strconv.FormatInt(telegramId, 10)})
 	if err != nil {
