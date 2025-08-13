@@ -9,6 +9,7 @@ import (
 	"github.com/robfig/cron/v3"
 	"log"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"remnawave-tg-shop-bot/internal/cache"
@@ -21,6 +22,7 @@ import (
 	"remnawave-tg-shop-bot/internal/remnawave"
 	"remnawave-tg-shop-bot/internal/sync"
 	"remnawave-tg-shop-bot/internal/translation"
+	"remnawave-tg-shop-bot/internal/tribute"
 	"remnawave-tg-shop-bot/internal/yookasa"
 	"strconv"
 	"strings"
@@ -69,18 +71,13 @@ func main() {
 		defer cronScheduler.Stop()
 	}
 
-	subService := notification.NewSubscriptionService(customerRepository, b, tm)
+	subService := notification.NewSubscriptionService(customerRepository, purchaseRepository, paymentService, b, tm)
 
-	subscriptionNotificationCronScheduler := setupSubscriptionNotifier(subService)
+	subscriptionNotificationCronScheduler := subscriptionChecker(subService)
 	subscriptionNotificationCronScheduler.Start()
 	defer subscriptionNotificationCronScheduler.Stop()
 
 	syncService := sync.NewSyncService(remnawaveClient, customerRepository)
-
-	// Добавляем автоматическую синхронизацию каждые 30 минут
-	autoSyncCronScheduler := setupAutoSync(syncService)
-	autoSyncCronScheduler.Start()
-	defer autoSyncCronScheduler.Stop()
 
 	h := handler.NewHandler(syncService, paymentService, tm, customerRepository, purchaseRepository, cryptoPayClient, yookasaClient, referralRepository, cache)
 
@@ -134,8 +131,68 @@ func main() {
 		return update.Message != nil && update.Message.SuccessfulPayment != nil
 	}, h.SuccessPaymentHandler)
 
+	mux := http.NewServeMux()
+	mux.Handle("/healthcheck", fullHealthHandler(pool, remnawaveClient))
+	if config.GetTributeWebHookUrl() != "" {
+		tributeHandler := tribute.NewClient(paymentService, customerRepository)
+		mux.Handle(config.GetTributeWebHookUrl(), tributeHandler.WebHookHandler())
+	}
+
+	srv := &http.Server{
+		Addr:    fmt.Sprintf(":%d", config.GetHealthCheckPort()),
+		Handler: mux,
+	}
+	go func() {
+		log.Printf("Server listening on %s", srv.Addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server error: %v", err)
+		}
+	}()
+
 	slog.Info("Bot is starting...")
 	b.Start(ctx)
+
+	log.Println("Shutting down health server…")
+	shutdownCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutCancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Health server shutdown error: %v", err)
+	}
+}
+
+func fullHealthHandler(pool *pgxpool.Pool, rw *remnawave.Client) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		status := map[string]string{
+			"status": "ok",
+			"db":     "ok",
+			"rw":     "ok",
+			"time":   time.Now().Format(time.RFC3339),
+		}
+
+		dbCtx, dbCancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer dbCancel()
+		if err := pool.Ping(dbCtx); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			status["status"] = "fail"
+			status["db"] = "error: " + err.Error()
+		}
+
+		rwCtx, rwCancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer rwCancel()
+		if err := rw.Ping(rwCtx); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			status["status"] = "fail"
+			status["rw"] = "error: " + err.Error()
+		}
+
+		if status["status"] == "ok" {
+			w.WriteHeader(http.StatusOK)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"status":"%s","db":"%s","remnawave":"%s","time":"%s"}`,
+			status["status"], status["db"], status["rw"], status["time"])
+	})
 }
 
 func isAdminMiddleware(next bot.HandlerFunc) bot.HandlerFunc {
@@ -148,29 +205,11 @@ func isAdminMiddleware(next bot.HandlerFunc) bot.HandlerFunc {
 	}
 }
 
-// setupAutoSync настраивает автоматическую синхронизацию каждые 30 минут
-func setupAutoSync(syncService *sync.SyncService) *cron.Cron {
-	c := cron.New()
-
-	_, err := c.AddFunc("*/30 * * * *", func() {
-		slog.Info("Running automatic sync with panel")
-		syncService.Sync()
-		slog.Info("Automatic sync completed")
-	})
-
-	if err != nil {
-		panic(err)
-	}
-	return c
-}
-
-func setupSubscriptionNotifier(subService *notification.SubscriptionService) *cron.Cron {
+func subscriptionChecker(subService *notification.SubscriptionService) *cron.Cron {
 	c := cron.New()
 
 	_, err := c.AddFunc("0 16 * * *", func() {
-		slog.Info("Running subscription notification check")
-
-		err := subService.SendSubscriptionNotifications(context.Background())
+		err := subService.ProcessSubscriptionExpiration()
 		if err != nil {
 			slog.Error("Error sending subscription notifications", "error", err)
 		}
@@ -258,7 +297,7 @@ func checkYookasaInvoice(
 		}
 
 		if invoice.IsCancelled() {
-			err := paymentService.CancelPayment(purchase.ID)
+			err := paymentService.CancelYookassaPayment(purchase.ID)
 			if err != nil {
 				slog.Error("Error canceling invoice", "invoiceId", invoice.ID, "purchaseId", purchase.ID, err)
 			}
