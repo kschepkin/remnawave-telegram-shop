@@ -2,6 +2,7 @@ services:
   bot:
     build: .
     # image: ghcr.io/jolymmiels/remnawave-telegram-shop-bot:latest
+    restart: always
     env_file:
       - .env
     depends_on:
