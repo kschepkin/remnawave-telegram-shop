@@ -34,5 +34,8 @@
   "referral_bonus_granted": "🎁 Вам начислен бонус за приглашение друга!",
   "stars_button": "⭐ Оплата Telegram Stars",
   "share_referral_button": "📲 Поделиться ссылкой",
-  "web_app_button_text": "🔌 Подключиться"
+  "web_app_button_text": "🔌 Подключиться",
+  "tribute_button": "Tribute",
+  "tribute_cancelled": "Tribute отменён",
+  "access_denied": "⚠️ Доступ запрещён. Пожалуйста, обновите информацию профиля."
 }

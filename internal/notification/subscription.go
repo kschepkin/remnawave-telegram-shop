@@ -8,25 +8,40 @@ import (
 	"log/slog"
 	"remnawave-tg-shop-bot/internal/database"
 	"remnawave-tg-shop-bot/internal/handler"
-	"remnawave-tg-shop-bot/internal/payment"
 	"remnawave-tg-shop-bot/internal/translation"
 	"time"
 )
 
-type SubscriptionService struct {
-	customerRepository *database.CustomerRepository
-	purchaseRepository *database.PurchaseRepository
-	paymentService     *payment.PaymentService
-	telegramBot        *bot.Bot
-	tm                 *translation.Manager
+type customerRepository interface {
+	FindByExpirationRange(ctx context.Context, startDate, endDate time.Time) (*[]database.Customer, error)
 }
 
-func NewSubscriptionService(customerRepository *database.CustomerRepository,
-	purchaseRepository *database.PurchaseRepository,
-	paymentService *payment.PaymentService,
+type tributeRepository interface {
+	FindLatestActiveTributesByCustomerIDs(ctx context.Context, customerIDs []int64) (*[]database.Purchase, error)
+}
+
+type paymentProcessor interface {
+	CreatePurchase(ctx context.Context, amount float64, months int, customer *database.Customer, invoiceType database.InvoiceType) (string, int64, error)
+	ProcessPurchaseById(ctx context.Context, purchaseId int64) error
+}
+
+type SubscriptionService struct {
+	customerRepository customerRepository
+	purchaseRepository tributeRepository
+	paymentService     paymentProcessor
+	telegramBot        *bot.Bot
+	tm                 *translation.Manager
+	notify             func(context.Context, database.Customer) error
+}
+
+func NewSubscriptionService(customerRepository customerRepository,
+	purchaseRepository tributeRepository,
+	paymentService paymentProcessor,
 	telegramBot *bot.Bot,
 	tm *translation.Manager) *SubscriptionService {
-	return &SubscriptionService{customerRepository: customerRepository, purchaseRepository: purchaseRepository, paymentService: paymentService, telegramBot: telegramBot, tm: tm}
+	svc := &SubscriptionService{customerRepository: customerRepository, purchaseRepository: purchaseRepository, paymentService: paymentService, telegramBot: telegramBot, tm: tm}
+	svc.notify = svc.sendNotification
+	return svc
 }
 func (s *SubscriptionService) ProcessSubscriptionExpiration() error {
 	ctx := context.Background()
@@ -47,19 +62,19 @@ func (s *SubscriptionService) ProcessSubscriptionExpiration() error {
 		customersIds[i] = customer.ID
 	}
 
-	nonCancelledTributes, err := s.purchaseRepository.FindTributesByCustomerIDs(ctx, customersIds)
+	latestActiveTributes, err := s.purchaseRepository.FindLatestActiveTributesByCustomerIDs(ctx, customersIds)
 	if err != nil {
 		slog.Error("Failed to query tribute purchases", "error", err)
 		return err
 	}
 
-	customerIdTributes := make(map[int64]*database.Purchase, len(*nonCancelledTributes))
-	for i := range *nonCancelledTributes {
-		p := &(*nonCancelledTributes)[i]
+	customerIdTributes := make(map[int64]*database.Purchase, len(*latestActiveTributes))
+	for i := range *latestActiveTributes {
+		p := &(*latestActiveTributes)[i]
 		customerIdTributes[p.CustomerID] = p
 	}
 
-	tributesProcessed := make(map[int64]bool, len(*nonCancelledTributes))
+	tributesProcessed := make(map[int64]bool, len(*latestActiveTributes))
 
 	for _, customer := range *customers {
 		daysUntilExpiration := s.getDaysUntilExpiration(now, *customer.ExpireAt)
@@ -86,7 +101,12 @@ func (s *SubscriptionService) ProcessSubscriptionExpiration() error {
 			continue
 		}
 
-		err := s.sendNotification(ctx, customer)
+		send := s.notify
+		if send == nil {
+			send = s.sendNotification
+		}
+
+		err := send(ctx, customer)
 		if err != nil {
 			slog.Error("Failed to send notification",
 				"customer_id", customer.ID,

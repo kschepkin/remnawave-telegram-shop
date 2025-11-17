@@ -280,16 +280,16 @@ func (cr *CustomerRepository) UpdateBatch(ctx context.Context, customers []Custo
 	if len(customers) == 0 {
 		return nil
 	}
-	query := "UPDATE customer SET expire_at = c.expire_at, language = c.language, subscription_link = c.subscription_link FROM (VALUES "
+	query := "UPDATE customer SET expire_at = c.expire_at, subscription_link = c.subscription_link FROM (VALUES "
 	var args []interface{}
 	for i, cust := range customers {
 		if i > 0 {
 			query += ", "
 		}
-		query += fmt.Sprintf("($%d::bigint, $%d::timestamp, $%d::text, $%d::text)", i*4+1, i*4+2, i*4+3, i*4+4)
-		args = append(args, cust.TelegramID, cust.ExpireAt, cust.Language, cust.SubscriptionLink)
+		query += fmt.Sprintf("($%d::bigint, $%d::timestamp, $%d::text)", i*3+1, i*3+2, i*3+3)
+		args = append(args, cust.TelegramID, cust.ExpireAt, cust.SubscriptionLink)
 	}
-	query += ") AS c(telegram_id, expire_at, language, subscription_link) WHERE customer.telegram_id = c.telegram_id"
+	query += ") AS c(telegram_id, expire_at, subscription_link) WHERE customer.telegram_id = c.telegram_id"
 
 	tx, err := cr.pool.Begin(ctx)
 	if err != nil {

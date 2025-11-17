@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+
 	sq "github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
-	"time"
 )
 
 type InvoiceType string
@@ -210,7 +211,19 @@ func (pr *PurchaseRepository) MarkAsPaid(ctx context.Context, purchaseID int64) 
 	return pr.UpdateFields(ctx, purchaseID, updates)
 }
 
-func (pr *PurchaseRepository) FindTributesByCustomerIDs(
+func buildLatestActiveTributesQuery(customerIDs []int64) sq.SelectBuilder {
+	return sq.
+		Select("*").
+		From("purchase").
+		Where(sq.And{
+			sq.Eq{"invoice_type": InvoiceTypeTribute},
+			sq.Eq{"customer_id": customerIDs},
+			sq.Expr("created_at = (SELECT MAX(created_at) FROM purchase p2 WHERE p2.customer_id = purchase.customer_id AND p2.invoice_type = ?)", InvoiceTypeTribute),
+		}).
+		Where(sq.NotEq{"status": PurchaseStatusCancel})
+}
+
+func (pr *PurchaseRepository) FindLatestActiveTributesByCustomerIDs(
 	ctx context.Context,
 	customerIDs []int64,
 ) (*[]Purchase, error) {
@@ -219,15 +232,7 @@ func (pr *PurchaseRepository) FindTributesByCustomerIDs(
 		return &empty, nil
 	}
 
-	builder := sq.
-		Select("*").
-		From("purchase").
-		Where(sq.And{
-			sq.Eq{"invoice_type": InvoiceTypeTribute},
-			sq.NotEq{"status": PurchaseStatusCancel},
-			sq.Eq{"customer_id": customerIDs}, // slice → IN (...)
-		}).
-		PlaceholderFormat(sq.Dollar)
+	builder := buildLatestActiveTributesQuery(customerIDs).PlaceholderFormat(sq.Dollar)
 
 	sql, args, err := builder.ToSql()
 	if err != nil {
@@ -273,6 +278,43 @@ func (pr *PurchaseRepository) FindByCustomerIDAndInvoiceTypeLast(
 			sq.Eq{"invoice_type": invoiceType},
 		}).
 		OrderBy("created_at DESC").
+		Limit(1).
+		PlaceholderFormat(sq.Dollar)
+
+	sql, args, err := query.ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build query: %w", err)
+	}
+
+	p := &Purchase{}
+	err = pr.pool.QueryRow(ctx, sql, args...).Scan(
+		&p.ID, &p.Amount, &p.CustomerID, &p.CreatedAt, &p.Month,
+		&p.PaidAt, &p.Currency, &p.ExpireAt, &p.Status, &p.InvoiceType,
+		&p.CryptoInvoiceID, &p.CryptoInvoiceLink, &p.YookasaURL, &p.YookasaID,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("query purchase: %w", err)
+	}
+
+	return p, nil
+}
+
+
+func (pr *PurchaseRepository) FindSuccessfulPaidPurchaseByCustomer(ctx context.Context, customerID int64) (*Purchase, error) {
+	query := sq.Select("*").
+		From("purchase").
+		Where(sq.And{
+			sq.Eq{"customer_id": customerID},
+			sq.Eq{"status": PurchaseStatusPaid},
+			sq.Or{
+				sq.Eq{"invoice_type": InvoiceTypeCrypto},
+				sq.Eq{"invoice_type": InvoiceTypeYookasa},
+			},
+		}).
+		OrderBy("paid_at DESC").
 		Limit(1).
 		PlaceholderFormat(sq.Dollar)
 

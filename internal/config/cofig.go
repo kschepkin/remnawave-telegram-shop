@@ -1,13 +1,15 @@
 package config
 
 import (
-	"github.com/google/uuid"
-	"github.com/joho/godotenv"
+	"fmt"
 	"log"
 	"log/slog"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/google/uuid"
+	"github.com/joho/godotenv"
 )
 
 type config struct {
@@ -15,6 +17,7 @@ type config struct {
 	price1, price3, price6, price12                           int
 	starsPrice1, starsPrice3, starsPrice6, starsPrice12       int
 	remnawaveUrl, remnawaveToken, remnawaveMode, remnawaveTag string
+	defaultLanguage                                           string
 	databaseURL                                               string
 	cryptoPayURL, cryptoPayToken                              string
 	botURL                                                    string
@@ -30,6 +33,7 @@ type config struct {
 	isTelegramStarsEnabled                                    bool
 	adminTelegramId                                           int64
 	trialDays                                                 int
+	trialRemnawaveTag                                         string
 	squadUUIDs                                                map[uuid.UUID]uuid.UUID
 	referralDays                                              int
 	miniApp                                                   string
@@ -39,12 +43,29 @@ type config struct {
 	isWebAppLinkEnabled                                       bool
 	xApiKey                                                   string
 	daysInMonth                                               int
+	externalSquadUUID                                         uuid.UUID
+	blockedTelegramIds                                        map[int64]bool
+	whitelistedTelegramIds                                    map[int64]bool
+	requirePaidPurchaseForStars                               bool
+	trialInternalSquads                                       map[uuid.UUID]uuid.UUID
+	trialExternalSquadUUID                                    uuid.UUID
 }
 
 var conf config
 
 func RemnawaveTag() string {
 	return conf.remnawaveTag
+}
+
+func TrialRemnawaveTag() string {
+	if conf.trialRemnawaveTag != "" {
+		return conf.trialRemnawaveTag
+	}
+	return conf.remnawaveTag
+}
+
+func DefaultLanguage() string {
+	return conf.defaultLanguage
 }
 func GetTributeWebHookUrl() string {
 	return conf.tributeWebhookUrl
@@ -67,6 +88,28 @@ func GetMiniAppURL() string {
 
 func SquadUUIDs() map[uuid.UUID]uuid.UUID {
 	return conf.squadUUIDs
+}
+
+func GetBlockedTelegramIds() map[int64]bool {
+	return conf.blockedTelegramIds
+}
+
+func GetWhitelistedTelegramIds() map[int64]bool {
+	return conf.whitelistedTelegramIds
+}
+
+func TrialInternalSquads() map[uuid.UUID]uuid.UUID {
+	if conf.trialInternalSquads != nil && len(conf.trialInternalSquads) > 0 {
+		return conf.trialInternalSquads
+	}
+	return conf.squadUUIDs
+}
+
+func TrialExternalSquadUUID() uuid.UUID {
+	if conf.trialExternalSquadUUID != uuid.Nil {
+		return conf.trialExternalSquadUUID
+	}
+	return conf.externalSquadUUID
 }
 
 func TrialTrafficLimit() int {
@@ -118,6 +161,10 @@ func Price12() int {
 
 func DaysInMonth() int {
 	return conf.daysInMonth
+}
+
+func ExternalSquadUUID() uuid.UUID {
+	return conf.externalSquadUUID
 }
 
 func Price(month int) int {
@@ -199,6 +246,10 @@ func IsYookasaEnabled() bool {
 
 func IsTelegramStarsEnabled() bool {
 	return conf.isTelegramStarsEnabled
+}
+
+func RequirePaidPurchaseForStars() bool {
+	return conf.requirePaidPurchaseForStars
 }
 
 func GetAdminTelegramId() int64 {
@@ -285,7 +336,22 @@ func InitConfig() {
 
 	conf.remnawaveTag = envStringDefault("REMNAWAVE_TAG", "")
 
+	conf.trialRemnawaveTag = envStringDefault("TRIAL_REMNAWAVE_TAG", "")
+
+	conf.defaultLanguage = envStringDefault("DEFAULT_LANGUAGE", "ru")
+
 	conf.daysInMonth = envIntDefault("DAYS_IN_MONTH", 30)
+
+	externalSquadUUIDStr := os.Getenv("EXTERNAL_SQUAD_UUID")
+	if externalSquadUUIDStr != "" {
+		parsedUUID, err := uuid.Parse(externalSquadUUIDStr)
+		if err != nil {
+			panic(fmt.Sprintf("invalid EXTERNAL_SQUAD_UUID format: %v", err))
+		}
+		conf.externalSquadUUID = parsedUUID
+	} else {
+		conf.externalSquadUUID = uuid.Nil
+	}
 
 	conf.trialTrafficLimit = mustEnvInt("TRIAL_TRAFFIC_LIMIT")
 
@@ -308,6 +374,8 @@ func InitConfig() {
 		conf.starsPrice12 = envIntDefault("STARS_PRICE_12", conf.price12)
 
 	}
+
+	conf.requirePaidPurchaseForStars = envBool("REQUIRE_PAID_PURCHASE_FOR_STARS")
 
 	conf.remnawaveUrl = mustEnv("REMNAWAVE_URL")
 
@@ -375,5 +443,78 @@ func InitConfig() {
 	if conf.tributeWebhookUrl != "" {
 		conf.tributeAPIKey = mustEnv("TRIBUTE_API_KEY")
 		conf.tributePaymentUrl = mustEnv("TRIBUTE_PAYMENT_URL")
+	}
+
+	conf.blockedTelegramIds = func() map[int64]bool {
+		v := os.Getenv("BLOCKED_TELEGRAM_IDS")
+		if v != "" {
+			ids := strings.Split(v, ",")
+			var blockedMap = make(map[int64]bool)
+			for _, idStr := range ids {
+				id, err := strconv.ParseInt(strings.TrimSpace(idStr), 10, 64)
+				if err != nil {
+					panic(fmt.Sprintf("invalid telegram ID in BLOCKED_TELEGRAM_IDS: %v", err))
+				}
+				blockedMap[id] = true
+			}
+			slog.Info("Loaded blocked telegram IDs", "count", len(blockedMap))
+			return blockedMap
+		} else {
+			slog.Info("No blocked telegram IDs specified")
+			return map[int64]bool{}
+		}
+	}()
+
+	conf.whitelistedTelegramIds = func() map[int64]bool {
+		v := os.Getenv("WHITELISTED_TELEGRAM_IDS")
+		if v != "" {
+			ids := strings.Split(v, ",")
+			var whitelistedMap = make(map[int64]bool)
+			for _, idStr := range ids {
+				id, err := strconv.ParseInt(strings.TrimSpace(idStr), 10, 64)
+				if err != nil {
+					panic(fmt.Sprintf("invalid telegram ID in WHITELISTED_TELEGRAM_IDS: %v", err))
+				}
+				whitelistedMap[id] = true
+			}
+			slog.Info("Loaded whitelisted telegram IDs", "count", len(whitelistedMap))
+			return whitelistedMap
+		} else {
+			slog.Info("No whitelisted telegram IDs specified")
+			return map[int64]bool{}
+		}
+	}()
+
+	conf.trialInternalSquads = func() map[uuid.UUID]uuid.UUID {
+		v := os.Getenv("TRIAL_INTERNAL_SQUADS")
+		if v != "" {
+			uuids := strings.Split(v, ",")
+			var trialSquadsMap = make(map[uuid.UUID]uuid.UUID)
+			for _, value := range uuids {
+				parsedUUID, err := uuid.Parse(strings.TrimSpace(value))
+				if err != nil {
+					panic(fmt.Sprintf("invalid UUID in TRIAL_INTERNAL_SQUADS: %v", err))
+				}
+				trialSquadsMap[parsedUUID] = parsedUUID
+			}
+			slog.Info("Loaded trial internal squad UUIDs", "uuids", uuids)
+			return trialSquadsMap
+		} else {
+			slog.Info("No trial internal squads specified, will use regular SQUAD_UUIDS for trial users")
+			return map[uuid.UUID]uuid.UUID{}
+		}
+	}()
+
+	trialExternalSquadUUIDStr := os.Getenv("TRIAL_EXTERNAL_SQUAD_UUID")
+	if trialExternalSquadUUIDStr != "" {
+		parsedUUID, err := uuid.Parse(trialExternalSquadUUIDStr)
+		if err != nil {
+			panic(fmt.Sprintf("invalid TRIAL_EXTERNAL_SQUAD_UUID format: %v", err))
+		}
+		conf.trialExternalSquadUUID = parsedUUID
+		slog.Info("Loaded trial external squad UUID", "uuid", trialExternalSquadUUIDStr)
+	} else {
+		conf.trialExternalSquadUUID = uuid.Nil
+		slog.Info("No trial external squad specified, will use regular EXTERNAL_SQUAD_UUID for trial users")
 	}
 }
