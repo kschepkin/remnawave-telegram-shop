@@ -37,5 +37,12 @@
   "web_app_button_text": "🔌 Connect",
   "tribute_button": "Tribute",
   "tribute_cancelled": "Tribute cancelled",
-  "access_denied": "⚠️ Access denied. Please update your profile information."
+  "access_denied": "⚠️ Access denied. Please update your profile information.",
+  "notify_request_message": "📢 Please send the message you want to broadcast to all users:",
+  "notify_preview": "📢 <b>Broadcast preview:</b>\n\n%s\n\n<b>Send this message to all users?</b>",
+  "notify_confirm_button": "✅ Confirm",
+  "notify_cancel_button": "❌ Cancel",
+  "notify_cancelled": "❌ Broadcast cancelled",
+  "notify_broadcasting": "📤 Broadcasting message to %d users...",
+  "notify_completed": "✅ Broadcast completed! Message sent to %d users."
 }

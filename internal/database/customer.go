@@ -13,11 +13,11 @@ import (
 )
 
 type CustomerRepository struct {
-	pool *pgxpool.Pool
+	Pool *pgxpool.Pool
 }
 
 func NewCustomerRepository(poll *pgxpool.Pool) *CustomerRepository {
-	return &CustomerRepository{pool: poll}
+	return &CustomerRepository{Pool: poll}
 }
 
 type Customer struct {
@@ -46,7 +46,7 @@ func (cr *CustomerRepository) FindByExpirationRange(ctx context.Context, startDa
 		return nil, fmt.Errorf("failed to build select query: %w", err)
 	}
 
-	rows, err := cr.pool.Query(ctx, sql, args...)
+	rows, err := cr.Pool.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query customers by expiration range: %w", err)
 	}
@@ -89,7 +89,7 @@ func (cr *CustomerRepository) FindById(ctx context.Context, id int64) (*Customer
 
 	var customer Customer
 
-	err = cr.pool.QueryRow(ctx, sql, args...).Scan(
+	err = cr.Pool.QueryRow(ctx, sql, args...).Scan(
 		&customer.ID,
 		&customer.TelegramID,
 		&customer.ExpireAt,
@@ -119,7 +119,7 @@ func (cr *CustomerRepository) FindByTelegramId(ctx context.Context, telegramId i
 
 	var customer Customer
 
-	err = cr.pool.QueryRow(ctx, sql, args...).Scan(
+	err = cr.Pool.QueryRow(ctx, sql, args...).Scan(
 		&customer.ID,
 		&customer.TelegramID,
 		&customer.ExpireAt,
@@ -147,7 +147,7 @@ func (cr *CustomerRepository) Create(ctx context.Context, customer *Customer) (*
 		return nil, fmt.Errorf("failed to build insert query: %w", err)
 	}
 
-	row := cr.pool.QueryRow(ctx, sqlStr, args...)
+	row := cr.Pool.QueryRow(ctx, sqlStr, args...)
 	var id int64
 	var createdAt time.Time
 	if err := row.Scan(&id, &createdAt); err != nil {
@@ -178,12 +178,12 @@ func (cr *CustomerRepository) UpdateFields(ctx context.Context, id int64, update
 		return fmt.Errorf("failed to build update query: %w", err)
 	}
 
-	tx, err := cr.pool.Begin(ctx)
+	tx, err := cr.Pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	result, err := cr.pool.Exec(ctx, sql, args...)
+	result, err := cr.Pool.Exec(ctx, sql, args...)
 	if err != nil {
 		if err := tx.Rollback(ctx); err != nil {
 			return fmt.Errorf("failed to rollback transaction: %w", err)
@@ -213,7 +213,7 @@ func (cr *CustomerRepository) FindByTelegramIds(ctx context.Context, telegramIDs
 		return nil, fmt.Errorf("failed to build select query: %w", err)
 	}
 
-	rows, err := cr.pool.Query(ctx, sqlStr, args...)
+	rows, err := cr.Pool.Query(ctx, sqlStr, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query customers: %w", err)
 	}
@@ -257,12 +257,12 @@ func (cr *CustomerRepository) CreateBatch(ctx context.Context, customers []Custo
 		return fmt.Errorf("failed to build batch insert query: %w", err)
 	}
 
-	tx, err := cr.pool.Begin(ctx)
+	tx, err := cr.Pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	_, err = cr.pool.Exec(ctx, sqlStr, args...)
+	_, err = cr.Pool.Exec(ctx, sqlStr, args...)
 	if err != nil {
 		if err := tx.Rollback(ctx); err != nil {
 			return fmt.Errorf("failed to rollback transaction: %w", err)
@@ -291,11 +291,11 @@ func (cr *CustomerRepository) UpdateBatch(ctx context.Context, customers []Custo
 	}
 	query += ") AS c(telegram_id, expire_at, subscription_link) WHERE customer.telegram_id = c.telegram_id"
 
-	tx, err := cr.pool.Begin(ctx)
+	tx, err := cr.Pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	_, err = cr.pool.Exec(ctx, query, args...)
+	_, err = cr.Pool.Exec(ctx, query, args...)
 	if err != nil {
 		if err := tx.Rollback(ctx); err != nil {
 			return fmt.Errorf("failed to rollback transaction: %w", err)
@@ -324,11 +324,43 @@ func (cr *CustomerRepository) DeleteByNotInTelegramIds(ctx context.Context, tele
 		return fmt.Errorf("failed to build delete query: %w", err)
 	}
 
-	_, err = cr.pool.Exec(ctx, sqlStr, args...)
+	_, err = cr.Pool.Exec(ctx, sqlStr, args...)
 	if err != nil {
 		return fmt.Errorf("failed to delete customers: %w", err)
 	}
 
 	return nil
 
+}
+
+func (cr *CustomerRepository) FindAllTelegramIds(ctx context.Context) ([]int64, error) {
+	buildSelect := sq.Select("DISTINCT telegram_id").
+		From("customer").
+		PlaceholderFormat(sq.Dollar)
+
+	sqlStr, args, err := buildSelect.ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build select query: %w", err)
+	}
+
+	rows, err := cr.Pool.Query(ctx, sqlStr, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query telegram IDs: %w", err)
+	}
+	defer rows.Close()
+
+	var telegramIDs []int64
+	for rows.Next() {
+		var telegramID int64
+		if err := rows.Scan(&telegramID); err != nil {
+			return nil, fmt.Errorf("failed to scan telegram ID: %w", err)
+		}
+		telegramIDs = append(telegramIDs, telegramID)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating over telegram ID rows: %w", err)
+	}
+
+	return telegramIDs, nil
 }
