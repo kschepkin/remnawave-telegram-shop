@@ -128,7 +128,11 @@ func main() {
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/sync", bot.MatchTypeExact, h.SyncUsersCommandHandler, isAdminMiddleware)
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/notify", bot.MatchTypeExact, h.NotifyCommandHandler, isAdminMiddleware)
 	b.RegisterHandlerMatchFunc(func(update *models.Update) bool {
-		return update.Message != nil && update.Message.Text != "" && update.Message.From.ID == config.GetAdminTelegramId()
+		if update.Message == nil {
+			return false
+		}
+		hasContent := update.Message.Text != "" || (update.Message.Photo != nil && len(update.Message.Photo) > 0)
+		return hasContent && update.Message.From.ID == config.GetAdminTelegramId()
 	}, h.NotifyMessageHandler)
 
 	b.RegisterHandler(bot.HandlerTypeCallbackQueryData, handler.CallbackReferral, bot.MatchTypeExact, h.ReferralCallbackHandler, h.SuspiciousUserFilterMiddleware, h.CreateCustomerIfNotExistMiddleware)

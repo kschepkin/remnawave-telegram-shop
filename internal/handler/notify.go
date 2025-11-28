@@ -44,7 +44,8 @@ func (h Handler) NotifyCommandHandler(ctx context.Context, b *bot.Bot, update *m
 }
 
 func (h Handler) NotifyMessageHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	if update.Message == nil || update.Message.Text == "" {
+	// Проверяем что сообщение содержит текст ИЛИ фото
+	if update.Message == nil || (update.Message.Text == "" && (update.Message.Photo == nil || len(update.Message.Photo) == 0)) {
 		return
 	}
 
@@ -64,9 +65,36 @@ func (h Handler) NotifyMessageHandler(ctx context.Context, b *bot.Bot, update *m
 		language = customer.Language
 	}
 
-	broadcastMessage := html.EscapeString(update.Message.Text)
+	// Определяем текст сообщения и сохраняем file_id фото если есть
+	var broadcastMessage string
+	var photoFileID string
+	hasPhoto := false
 
-	previewMessage := fmt.Sprintf(h.translation.GetText(language, "notify_preview"), broadcastMessage)
+	if update.Message.Photo != nil && len(update.Message.Photo) > 0 {
+		// Берем последнее фото (самое большое разрешение)
+		photoFileID = update.Message.Photo[len(update.Message.Photo)-1].FileID
+		hasPhoto = true
+		// Для фото используем Caption как текст
+		broadcastMessage = html.EscapeString(update.Message.Caption)
+
+		// Сохраняем file_id фото в кэш
+		photoKey := fmt.Sprintf("notify_photo_%d", update.Message.From.ID)
+		h.cache.SetString(photoKey, photoFileID)
+	} else {
+		broadcastMessage = html.EscapeString(update.Message.Text)
+	}
+
+	// Формируем превью с указанием что будет фото
+	var previewMessage string
+	if hasPhoto {
+		if broadcastMessage != "" {
+			previewMessage = fmt.Sprintf(h.translation.GetText(language, "notify_preview_with_photo"), broadcastMessage)
+		} else {
+			previewMessage = h.translation.GetText(language, "notify_preview_photo_only")
+		}
+	} else {
+		previewMessage = fmt.Sprintf(h.translation.GetText(language, "notify_preview"), broadcastMessage)
+	}
 
 	confirmButton := models.InlineKeyboardButton{
 		Text:         h.translation.GetText(language, "notify_confirm_button"),
@@ -127,7 +155,12 @@ func (h Handler) NotifyConfirmCallbackHandler(ctx context.Context, b *bot.Bot, u
 		return
 	}
 
+	// Получаем file_id фото если есть
+	photoKey := fmt.Sprintf("notify_photo_%d", update.CallbackQuery.From.ID)
+	photoFileID, hasPhoto := h.cache.GetString(photoKey)
+
 	h.cache.DeleteString(tempKey)
+	h.cache.DeleteString(photoKey)
 	h.cache.Set(update.CallbackQuery.From.ID, 0)
 
 	customers, err := h.customerRepository.FindAllTelegramIds(ctx)
@@ -151,11 +184,24 @@ func (h Handler) NotifyConfirmCallbackHandler(ctx context.Context, b *bot.Bot, u
 
 	successCount := 0
 	for _, telegramID := range customers {
-		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID:    telegramID,
-			Text:      broadcastMessage,
-			ParseMode: models.ParseModeHTML,
-		})
+		var err error
+
+		if hasPhoto {
+			// Отправляем фото с caption
+			_, err = b.SendPhoto(ctx, &bot.SendPhotoParams{
+				ChatID:    telegramID,
+				Photo:     &models.InputFileString{Data: photoFileID},
+				Caption:   broadcastMessage,
+				ParseMode: models.ParseModeHTML,
+			})
+		} else {
+			// Отправляем только текст
+			_, err = b.SendMessage(ctx, &bot.SendMessageParams{
+				ChatID:    telegramID,
+				Text:      broadcastMessage,
+				ParseMode: models.ParseModeHTML,
+			})
+		}
 
 		if err != nil {
 			slog.Error("Error sending broadcast message", "telegramId", telegramID, "error", err)
@@ -200,7 +246,9 @@ func (h Handler) NotifyCancelCallbackHandler(ctx context.Context, b *bot.Bot, up
 	}
 
 	tempKey := fmt.Sprintf("notify_message_%d", update.CallbackQuery.From.ID)
+	photoKey := fmt.Sprintf("notify_photo_%d", update.CallbackQuery.From.ID)
 	h.cache.DeleteString(tempKey)
+	h.cache.DeleteString(photoKey)
 	h.cache.Set(update.CallbackQuery.From.ID, 0)
 
 	cancelledMessage := h.translation.GetText(language, "notify_cancelled")
