@@ -108,7 +108,7 @@ Migrations are located in `db/migrations/` and run automatically on startup via 
 - `internal/remnawave/` - Remnawave panel API client (user creation, subscription management, squad assignment)
 
 **Configuration:**
-- `internal/config/cofig.go` - Environment variable loading and validation (uses godotenv)
+- `internal/config/config.go` - Environment variable loading and validation (uses godotenv)
 
 **Utilities:**
 - `utils/text_sanitizer.go` - HTML sanitization for Telegram messages (prevents injection)
@@ -219,3 +219,153 @@ b.RegisterHandler(bot.HandlerTypeMessageText, "/start", bot.MatchTypePrefix,
 - Full documentation: https://remnawave-telegram-shop-bot-doc.vercel.app/
 - Remnawave API: https://github.com/Jolymmiles/remnawave-api-go
 - Telegram Bot API: https://core.telegram.org/bots/api
+
+## Upstream Repository and Merge Strategy
+
+This repository is a fork with custom modifications. The original repository is maintained separately.
+
+### Upstream Information
+- **Original Repository Location**: `~/Documents/GitHub/vpn-services/remnawave-telegram-shop`
+- **Remote Name**: `upstream`
+- **Remote URL**: Already configured as local path to original repo
+
+### Custom Features (Not in Upstream)
+This fork includes the following custom features that must be preserved during merges:
+
+1. **Broadcast System** (`internal/handler/notify.go`)
+   - Admin can send broadcast messages to all users
+   - Supports text messages with optional images
+   - Handlers: `NotifyMessageHandler`, `NotifyConfirmCallbackHandler`, `NotifyCancelCallbackHandler`
+   - Registered in `cmd/app/main.go`
+
+2. **Cache System** (`internal/cache/cache.go`)
+   - In-memory caching for user data
+   - Initialized in `cmd/app/main.go`
+
+3. **GitHub Actions Workflow** (`.github/workflows/build-main.yml`)
+   - Custom CI/CD pipeline for automated builds
+
+4. **Translation Keys**
+   - `notify_*` keys in `translations/en.json` and `translations/ru.json`
+   - Used by broadcast system
+
+5. **Auto-synchronization Features**
+   - Methods in `internal/payment/payment.go`
+   - Methods in `internal/remnawave/client.go` (e.g., `GetUsers()`, `DecreaseSubscription()`)
+
+### Merging from Upstream
+
+When updating from the upstream repository, follow these steps:
+
+**1. Create Backup Branch**
+```bash
+git branch backup-before-merge-$(date +%Y%m%d)
+```
+
+**2. Fetch Upstream Changes**
+```bash
+# If upstream remote doesn't exist, add it:
+git remote add upstream ~/Documents/GitHub/vpn-services/remnawave-telegram-shop
+
+# Fetch latest changes
+git fetch upstream
+```
+
+**3. Review Changes**
+```bash
+# View commits in upstream not in your fork
+git log HEAD..upstream/main --oneline
+
+# View your commits not in upstream
+git log upstream/main..HEAD --oneline
+
+# Check which files changed
+git diff --name-only HEAD...upstream/main
+```
+
+**4. Merge with Conflict Resolution**
+```bash
+# Start merge (do not commit automatically)
+git merge upstream/main --no-commit --no-ff
+```
+
+**5. Resolve Conflicts**
+
+Critical files that often have conflicts:
+- `cmd/app/main.go` - Preserve notify handler registrations
+- `internal/remnawave/client.go` - Keep custom sync methods, update API calls to match new version
+- `translations/*.json` - Merge both sets of keys
+- `go.mod`/`go.sum` - Take upstream version, then run `go mod tidy`
+- `internal/config/config.go` (formerly `cofig.go`) - May need to merge config fields
+
+**6. Verify Custom Features**
+
+After resolving conflicts, verify:
+```bash
+# Check custom files exist
+ls -la internal/handler/notify.go internal/cache/cache.go
+
+# Verify notify handlers are registered
+grep -n "NotifyMessageHandler" cmd/app/main.go
+
+# Verify translations exist
+grep -n "notify_request_message" translations/*.json
+
+# Build and test
+go build ./cmd/app
+go test ./...
+```
+
+**7. Complete Merge**
+```bash
+# Stage all resolved files
+git add -A
+
+# Commit with descriptive message
+git commit -m "Merge upstream/main: [description of upstream changes]
+
+Preserved custom features:
+- Broadcast system (notify.go)
+- Cache system
+- Auto-synchronization
+- Custom translations"
+```
+
+### Important Notes for Merges
+
+1. **API Version Updates**: When upstream updates remnawave-api version, custom methods in `internal/remnawave/client.go` may need signature updates to match new API
+   - Example: `updateUser()` may gain new parameters like `isTrialUser bool`
+
+2. **Configuration Changes**: Upstream may rename or add environment variables
+   - Check `.env.sample` for new required variables
+   - Update `internal/config/config.go` if needed
+
+3. **Logging Changes**: Upstream may update logging format (e.g., `slog.Error` signature)
+   - Apply same changes to custom code
+
+4. **Always Use backend-dev Agent**: For complex merges with many conflicts, use the backend-dev agent through Task tool to ensure careful resolution
+
+5. **Test After Merge**: Always run full build and test suite after merge to catch any integration issues
+
+### Rollback Strategy
+
+If merge causes issues:
+```bash
+# Return to backup branch
+git reset --hard backup-before-merge-YYYYMMDD
+
+# Or create new branch from backup
+git checkout -b fix-merge backup-before-merge-YYYYMMDD
+```
+
+### Update Frequency
+
+Check for upstream updates periodically (e.g., monthly) to avoid large divergence:
+```bash
+cd ~/Documents/GitHub/vpn-services/remnawave-telegram-shop
+git pull
+
+cd ~/Documents/GitHub/vpn-services/remnawave-telegram-shop2
+git fetch upstream
+git log HEAD..upstream/main --oneline | wc -l  # Count new commits
+```
