@@ -43,6 +43,7 @@ purchase and manage subscriptions through Telegram with multiple payment system 
 | 1.6           | 2.3.6 |
 | 2.0.0 - 2.1.9 | 3.2.4 |
 | 2.2.*         | 3.2.5 |
+| 2.3.*         | 3.5.* |
 
 ## API
 
@@ -67,7 +68,7 @@ The application requires the following environment variables to be set:
 | `TRIAL_REMNAWAVE_TAG`    | Tag to assign to trial users in Remnawave (optional, if not set, regular REMNAWAVE_TAG will be used)                                        |
 | `HEALTH_CHECK_PORT`      | Server port                                                                                                                                |
 | `IS_WEB_APP_LINK`        | If true, then sublink will be showed as webapp..                                                                                           |
-| `X_API_KEY`              | https://remna.st/docs/security/tinyauth-for-nginx#issuing-api-keys                                                                         |
+| `REMNAWAVE_HEADERS`      | Additional headers for remnawave requests (format: key1:value1;key2:value2). Example: X-Api-Key:your_key;X-Custom:value (optional)       |
 | `MINI_APP_URL`           | tg WEB APP URL. if empty not be used.                                                                                                      |
 | `STARS_PRICE_1`          | Price in Stars for 1 month                                                                                                                 
 | `STARS_PRICE_3`          | Price in Stars for 3 month                                                                                                                 
@@ -101,8 +102,10 @@ The application requires the following environment variables to be set:
 | `ADMIN_TELEGRAM_ID`      | Admin telegram id                                                                                                                          |
 | `BLOCKED_TELEGRAM_IDS`   | Comma-separated list of Telegram IDs to block from accessing the bot (e.g., "123456789,987654321")                                         |
 | `WHITELISTED_TELEGRAM_IDS` | Comma-separated list of Telegram IDs that bypass all suspicious user checks (e.g., "111111111,222222222,333333333")                      |
-| `TRIAL_TRAFFIC_LIMIT`    | Maximum allowed traffic in gb for trial subscriptions                                                                                      |     
+| `TRIAL_TRAFFIC_LIMIT`    | Maximum allowed traffic in gb for trial subscriptions                                                                                      |
 | `TRIAL_DAYS`             | Number of days for trial subscriptions. if 0 = disabled.                                                                                   |
+| `TRAFFIC_LIMIT_RESET_STRATEGY` | Traffic limit reset strategy. Allowed values: DAY, WEEK, MONTH, NO_RESET. Default: MONTH. |
+| `TRIAL_TRAFFIC_LIMIT_RESET_STRATEGY` | Traffic limit reset strategy for trial users. Allowed values: DAY, WEEK, MONTH, NO_RESET. Default: MONTH. |
 | `TRIAL_INTERNAL_SQUADS`  | Comma-separated list of squad UUIDs to assign to trial users (optional, if not set, regular SQUAD_UUIDS will be used)                      |
 | `TRIAL_EXTERNAL_SQUAD_UUID` | Single external squad UUID to assign to trial users during creation and updates (optional, if not set, regular EXTERNAL_SQUAD_UUID will be used) |
 | `SQUAD_UUIDS`            | Comma-separated list of squad UUIDs to assign to users (e.g., "773db654-a8b2-413a-a50b-75c3536238fd,bc979bdd-f1fa-4d94-8a51-38a0f518a2a2") |

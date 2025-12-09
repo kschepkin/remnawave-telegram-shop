@@ -339,3 +339,8 @@ fabric.properties
 
 .DS_Store
 .env
+
+# Project specific
+# Compiled binaries
+app
+/bin/

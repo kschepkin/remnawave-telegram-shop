@@ -185,12 +185,12 @@ func main() {
 func fullHealthHandler(pool *pgxpool.Pool, rw *remnawave.Client) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		status := map[string]string{
-			"status": "ok",
-			"db":     "ok",
-			"rw":     "ok",
-			"time":   time.Now().Format(time.RFC3339),
-			"version": Version,
-			"commit": Commit,
+			"status":    "ok",
+			"db":        "ok",
+			"rw":        "ok",
+			"time":      time.Now().Format(time.RFC3339),
+			"version":   Version,
+			"commit":    Commit,
 			"buildDate": BuildDate,
 		}
 
@@ -324,14 +324,14 @@ func checkYookasaInvoice(
 		invoice, err := yookasaClient.GetPayment(ctx, *purchase.YookasaID)
 
 		if err != nil {
-			slog.Error("Error getting invoice", "invoiceId", purchase.YookasaID, err)
+			slog.Error("Error getting invoice", "invoiceId", purchase.YookasaID, "error", err)
 			continue
 		}
 
 		if invoice.IsCancelled() {
 			err := paymentService.CancelYookassaPayment(purchase.ID)
 			if err != nil {
-				slog.Error("Error canceling invoice", "invoiceId", invoice.ID, "purchaseId", purchase.ID, err)
+				slog.Error("Error canceling invoice", "invoiceId", invoice.ID, "purchaseId", purchase.ID, "error", err)
 			}
 			continue
 		}
@@ -342,12 +342,12 @@ func checkYookasaInvoice(
 
 		purchaseId, err := strconv.Atoi(invoice.Metadata["purchaseId"])
 		if err != nil {
-			slog.Error("Error parsing purchaseId", "invoiceId", invoice.ID, err)
+			slog.Error("Error parsing purchaseId", "invoiceId", invoice.ID, "error", err)
 		}
 		ctxWithValue := context.WithValue(ctx, "username", invoice.Metadata["username"])
 		err = paymentService.ProcessPurchaseById(ctxWithValue, int64(purchaseId))
 		if err != nil {
-			slog.Error("Error processing invoice", "invoiceId", invoice.ID, "purchaseId", purchaseId, err)
+			slog.Error("Error processing invoice", "invoiceId", invoice.ID, "purchaseId", purchaseId, "error", err)
 		} else {
 			slog.Info("Invoice processed", "invoiceId", invoice.ID, "purchaseId", purchaseId)
 		}
@@ -401,7 +401,7 @@ func checkCryptoPayInvoice(
 			ctxWithUsername := context.WithValue(ctx, "username", username)
 			err = paymentService.ProcessPurchaseById(ctxWithUsername, int64(purchaseID))
 			if err != nil {
-				slog.Error("Error processing invoice", "invoiceId", invoice.InvoiceID, err)
+				slog.Error("Error processing invoice", "invoiceId", invoice.InvoiceID, "error", err)
 			} else {
 				slog.Info("Invoice processed", "invoiceId", invoice.InvoiceID, "purchaseId", purchaseID)
 			}

@@ -41,7 +41,6 @@ type config struct {
 	healthCheckPort                                           int
 	tributeWebhookUrl, tributeAPIKey, tributePaymentUrl       string
 	isWebAppLinkEnabled                                       bool
-	xApiKey                                                   string
 	daysInMonth                                               int
 	externalSquadUUID                                         uuid.UUID
 	blockedTelegramIds                                        map[int64]bool
@@ -49,6 +48,9 @@ type config struct {
 	requirePaidPurchaseForStars                               bool
 	trialInternalSquads                                       map[uuid.UUID]uuid.UUID
 	trialExternalSquadUUID                                    uuid.UUID
+	remnawaveHeaders                                          map[string]string
+	trialTrafficLimitResetStrategy                            string
+	trafficLimitResetStrategy                                 string
 }
 
 var conf config
@@ -264,8 +266,16 @@ func IsWepAppLinkEnabled() bool {
 	return conf.isWebAppLinkEnabled
 }
 
-func GetXApiKey() string {
-	return conf.xApiKey
+func RemnawaveHeaders() map[string]string {
+	return conf.remnawaveHeaders
+}
+
+func TrialTrafficLimitResetStrategy() string {
+	return conf.trialTrafficLimitResetStrategy
+}
+
+func TrafficLimitResetStrategy() string {
+	return conf.trafficLimitResetStrategy
 }
 
 const bytesInGigabyte = 1073741824
@@ -325,8 +335,6 @@ func InitConfig() {
 
 	conf.telegramToken = mustEnv("TELEGRAM_TOKEN")
 
-	conf.xApiKey = os.Getenv("X_API_KEY")
-
 	conf.isWebAppLinkEnabled = func() bool {
 		isWebAppLinkEnabled := os.Getenv("IS_WEB_APP_LINK") == "true"
 		return isWebAppLinkEnabled
@@ -337,6 +345,9 @@ func InitConfig() {
 	conf.remnawaveTag = envStringDefault("REMNAWAVE_TAG", "")
 
 	conf.trialRemnawaveTag = envStringDefault("TRIAL_REMNAWAVE_TAG", "")
+
+	conf.trialTrafficLimitResetStrategy = envStringDefault("TRIAL_TRAFFIC_LIMIT_RESET_STRATEGY", "MONTH")
+	conf.trafficLimitResetStrategy = envStringDefault("TRAFFIC_LIMIT_RESET_STRATEGY", "MONTH")
 
 	conf.defaultLanguage = envStringDefault("DEFAULT_LANGUAGE", "ru")
 
@@ -517,4 +528,27 @@ func InitConfig() {
 		conf.trialExternalSquadUUID = uuid.Nil
 		slog.Info("No trial external squad specified, will use regular EXTERNAL_SQUAD_UUID for trial users")
 	}
+
+	conf.remnawaveHeaders = func() map[string]string {
+		v := os.Getenv("REMNAWAVE_HEADERS")
+		if v != "" {
+			headers := make(map[string]string)
+			pairs := strings.Split(v, ";")
+			for _, pair := range pairs {
+				parts := strings.SplitN(strings.TrimSpace(pair), ":", 2)
+				if len(parts) == 2 {
+					key := strings.TrimSpace(parts[0])
+					value := strings.TrimSpace(parts[1])
+					if key != "" && value != "" {
+						headers[key] = value
+					}
+				}
+			}
+			if len(headers) > 0 {
+				slog.Info("Loaded remnawave headers", "count", len(headers))
+				return headers
+			}
+		}
+		return map[string]string{}
+	}()
 }

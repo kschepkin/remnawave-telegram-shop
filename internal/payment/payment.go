@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/go-telegram/bot"
-	"github.com/go-telegram/bot/models"
 	"log/slog"
 	"remnawave-tg-shop-bot/internal/cache"
 	"remnawave-tg-shop-bot/internal/config"
@@ -16,6 +14,9 @@ import (
 	"remnawave-tg-shop-bot/internal/yookasa"
 	"remnawave-tg-shop-bot/utils"
 	"time"
+
+	"github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
 )
 
 type PaymentService struct {
@@ -60,7 +61,7 @@ func (s PaymentService) ProcessPurchaseById(ctx context.Context, purchaseId int6
 		return err
 	}
 	if purchase == nil {
-		return fmt.Errorf("purchase with crypto invoice id %d not found", utils.MaskHalfInt64(purchaseId))
+		return fmt.Errorf("purchase with crypto invoice id %s not found", utils.MaskHalfInt64(purchaseId))
 	}
 
 	customer, err := s.customerRepository.FindById(ctx, purchase.CustomerID)
@@ -77,7 +78,7 @@ func (s PaymentService) ProcessPurchaseById(ctx context.Context, purchaseId int6
 			MessageID: messageId,
 		})
 		if err != nil {
-			slog.Error("Error deleting message", err)
+			slog.Error("Error deleting message", "error", err)
 		}
 	}
 
@@ -233,7 +234,7 @@ func (s PaymentService) CancelTributePurchase(ctx context.Context, telegramId in
 		Text:      s.translation.GetText(customer.Language, "tribute_cancelled"),
 	})
 	if err != nil {
-		slog.Error("Error sending message about tribute cancelled", err, "telegram_id", utils.MaskHalfInt64(telegramId))
+		slog.Error("Error sending message about tribute cancelled", "error", err, "telegram_id", utils.MaskHalfInt64(telegramId))
 	}
 	slog.Info("Canceled tribute purchase", "purchase_id", utils.MaskHalfInt64(tributePurchase.ID), "telegram_id", utils.MaskHalfInt64(telegramId))
 	return nil
@@ -249,7 +250,7 @@ func (s PaymentService) createCryptoInvoice(ctx context.Context, amount float64,
 		Month:       months,
 	})
 	if err != nil {
-		slog.Error("Error creating purchase", err)
+		slog.Error("Error creating purchase", "error", err)
 		return "", 0, err
 	}
 
@@ -264,7 +265,7 @@ func (s PaymentService) createCryptoInvoice(ctx context.Context, amount float64,
 		PaidBtnUrl:     config.BotURL(),
 	})
 	if err != nil {
-		slog.Error("Error creating invoice", err)
+		slog.Error("Error creating invoice", "error", err)
 		return "", 0, err
 	}
 
@@ -276,7 +277,7 @@ func (s PaymentService) createCryptoInvoice(ctx context.Context, amount float64,
 
 	err = s.purchaseRepository.UpdateFields(ctx, purchaseId, updates)
 	if err != nil {
-		slog.Error("Error updating purchase", err)
+		slog.Error("Error updating purchase", "error", err)
 		return "", 0, err
 	}
 
@@ -293,13 +294,13 @@ func (s PaymentService) createYookasaInvoice(ctx context.Context, amount float64
 		Month:       months,
 	})
 	if err != nil {
-		slog.Error("Error creating purchase", err)
+		slog.Error("Error creating purchase", "error", err)
 		return "", 0, err
 	}
 
 	invoice, err := s.yookasaClient.CreateInvoice(ctx, int(amount), months, customer.ID, purchaseId)
 	if err != nil {
-		slog.Error("Error creating invoice", err)
+		slog.Error("Error creating invoice", "error", err)
 		return "", 0, err
 	}
 
@@ -311,7 +312,7 @@ func (s PaymentService) createYookasaInvoice(ctx context.Context, amount float64
 
 	err = s.purchaseRepository.UpdateFields(ctx, purchaseId, updates)
 	if err != nil {
-		slog.Error("Error updating purchase", err)
+		slog.Error("Error updating purchase", "error", err)
 		return "", 0, err
 	}
 
@@ -328,7 +329,7 @@ func (s PaymentService) createTelegramInvoice(ctx context.Context, amount float6
 		Month:       months,
 	})
 	if err != nil {
-		slog.Error("Error creating purchase", err)
+		slog.Error("Error creating purchase", "error", err)
 		return "", 0, nil
 	}
 
@@ -351,7 +352,7 @@ func (s PaymentService) createTelegramInvoice(ctx context.Context, amount float6
 
 	err = s.purchaseRepository.UpdateFields(ctx, purchaseId, updates)
 	if err != nil {
-		slog.Error("Error updating purchase", err)
+		slog.Error("Error updating purchase", "error", err)
 		return "", 0, err
 	}
 
@@ -364,7 +365,7 @@ func (s PaymentService) ActivateTrial(ctx context.Context, telegramId int64) (st
 	}
 	customer, err := s.customerRepository.FindByTelegramId(ctx, telegramId)
 	if err != nil {
-		slog.Error("Error finding customer", err)
+		slog.Error("Error finding customer", "error", err)
 		return "", err
 	}
 	if customer == nil {
@@ -372,7 +373,7 @@ func (s PaymentService) ActivateTrial(ctx context.Context, telegramId int64) (st
 	}
 	user, err := s.remnawaveClient.CreateOrUpdateUser(ctx, customer.ID, telegramId, config.TrialTrafficLimit(), config.TrialDays(), true)
 	if err != nil {
-		slog.Error("Error creating user", err)
+		slog.Error("Error creating user", "error", err)
 		return "", err
 	}
 
@@ -398,7 +399,7 @@ func (s PaymentService) CancelYookassaPayment(purchaseId int64) error {
 		return err
 	}
 	if purchase == nil {
-		return fmt.Errorf("purchase with crypto invoice id %d not found", utils.MaskHalfInt64(purchaseId))
+		return fmt.Errorf("purchase with crypto invoice id %s not found", utils.MaskHalfInt64(purchaseId))
 	}
 
 	purchaseFieldsToUpdate := map[string]interface{}{
@@ -423,7 +424,7 @@ func (s PaymentService) createTributeInvoice(ctx context.Context, amount float64
 		Month:       months,
 	})
 	if err != nil {
-		slog.Error("Error creating purchase", err)
+		slog.Error("Error creating purchase", "error", err)
 		return "", 0, err
 	}
 
