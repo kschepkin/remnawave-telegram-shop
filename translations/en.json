@@ -1,9 +1,9 @@
 {
-  "greeting": "👋🏻 <b>Hey there!</b>\nI'm your assistant for connecting to <b>VPN</b>🛡️\n\nAvailable locations:\n🇷🇺 Russia\n🇳🇱 Netherlands\n🇩🇪 Germany\n🇰🇿 Kazakhstan\n\n<b>How to connect:</b>\n• Tap <b>'Connect'</b>\n• Follow the quick guide 🙌",
+  "greeting": "👋🏻 <b>Hey there!</b>\nI'm your assistant for connecting to <b>VPN</b>🛡️\n\nAvailable locations:\n🇷🇺 Russia\n🇳🇱 Netherlands\n🇫🇷 France\n🇩🇪 Germany\n🇰🇿 Kazakhstan\n\n<b>How to connect:</b>\n• Tap <b>'Connect'</b>\n• Follow the quick guide 🙌",
   "buy_button": "💰 Buy a subscription",
   "connect_button": "🔌 Connect",
   "back_button": "🔙 Back",
-  "pricing_info": "💰 <b>Choose your plan</b>\n\nWe accept:\n• <b>Telegram Stars</b> ⭐️\n• <b>YooMoney</b> 💳\n\n<b>Prices:</b>\n<b>Via Telegram Stars:</b>\n• 1 month — 100⭐️\n• 3 months — 250⭐️\n• 6 months — 500⭐️\n• 12 months — 1000⭐️\n\n<b>Via YooMoney:</b>\n• 1 month — 200₽\n• 3 months — 500₽\n• 6 months — 1000₽\n• 12 months — 2000₽\n\n👉 Choose the period, payment method — and hit 'Pay'! \nEasy as that 😉",
+  "pricing_info": "💰 <b>Choose your plan</b>\n\nWe accept:\n• <b>Telegram Stars</b> ⭐️\n• <b>YooMoney</b> 💳\n\n<b>Prices:</b>\n<b>Via Telegram Stars:</b>\n• 1 month — 150⭐️\n• 3 months — 300⭐️\n• 6 months — 600⭐️\n• 12 months — 1100⭐️\n\n<b>Via YooMoney:</b>\n• 1 month — 200₽\n• 3 months — 500₽\n• 6 months — 1000₽\n• 12 months — 2000₽\n\n👉 Choose the period, payment method — and hit 'Pay'! \nEasy as that 😉",
   "month_1": "1 month",
   "month_3": "3 months",
   "month_6": "6 months",
