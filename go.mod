@@ -3,7 +3,7 @@ module remnawave-tg-shop-bot
 go 1.25.3
 
 require (
-	github.com/Jolymmiles/remnawave-api-go/v2 v2.3.0-8
+	github.com/Jolymmiles/remnawave-api-go/v2 v2.3.2
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/go-telegram/bot v1.15.0
 	github.com/golang-migrate/migrate/v4 v4.18.3
